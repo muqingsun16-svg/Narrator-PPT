@@ -1,0 +1,1391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Narrator — 叙事诊断与重组</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ============ RESET & BASE ============ */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      background: #050302;
+      color: #f6ddcb;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+      min-height: 100vh;
+    }
+    ::selection { background: #f45d0a; color: #050302; }
+    * { scrollbar-width: thin; scrollbar-color: #2a2826 #050302; }
+    *::-webkit-scrollbar { width: 5px; }
+    *::-webkit-scrollbar-track { background: #050302; }
+    *::-webkit-scrollbar-thumb { background: #2a2826; border-radius: 3px; }
+    *::-webkit-scrollbar-thumb:hover { background: #f45d0a; }
+
+    /* ============ UTILITIES ============ */
+    .hidden { display: none !important; }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes diagnosisBreathe { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+    @keyframes slideIn { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(-50%) translateY(20px); } to { opacity: 0.9; transform: translateX(-50%) translateY(0); } }
+    .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .line-clamp-4 { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+
+    /* ============ BUTTONS ============ */
+    .btn-primary {
+      background: linear-gradient(135deg, #f45d0a, #d94a08);
+      color: #050302;
+      font-weight: 600;
+      padding: 8px 20px;
+      border-radius: 30px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 13px;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(244,93,10,0.4); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-outline {
+      background: transparent;
+      color: #f6ddcb;
+      border: 1px solid #2a2826;
+      padding: 8px 20px;
+      border-radius: 30px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 13px;
+      font-family: inherit;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-outline:hover { border-color: #f45d0a; background: rgba(244,93,10,0.08); }
+    .btn-outline:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-sm { padding: 5px 14px; font-size: 12px; }
+    .btn-xs { padding: 4px 12px; font-size: 11px; }
+    .btn-icon {
+      background: none; border: none; cursor: pointer;
+      color: #6b6560; padding: 4px; border-radius: 6px;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    .btn-icon:hover { color: #f45d0a; background: rgba(244,93,10,0.08); }
+
+    /* ============ INPUTS ============ */
+    .input-dark {
+      background: #0f0e0d;
+      border: 1px solid #2a2826;
+      color: #f6ddcb;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+      width: 100%;
+      font-family: inherit;
+    }
+    .input-dark:focus { border-color: #f45d0a; }
+    .input-dark::placeholder { color: #6b6560; }
+    textarea.input-dark { resize: vertical; min-height: 60px; }
+
+    /* ============ HEADER ============ */
+    .header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(5,3,2,0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid #2a2826;
+      height: 56px;
+    }
+    .header-inner {
+      max-width: 1440px; margin: 0 auto; padding: 0 24px;
+      height: 100%; display: flex; align-items: center; justify-content: space-between;
+    }
+    .header-brand {
+      font-family: 'Times New Roman', Times, Georgia, serif;
+      font-style: italic;
+      font-size: 18px;
+      color: #f6ddcb;
+      text-decoration: none;
+      letter-spacing: 0.5px;
+    }
+    .header-brand .badge {
+      font-family: 'Inter', sans-serif;
+      font-style: normal;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 2px 7px;
+      background: rgba(244,93,10,0.15);
+      color: #f45d0a;
+      border-radius: 20px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .header-nav { display: flex; align-items: center; gap: 2px; }
+    .header-nav a {
+      padding: 6px 14px;
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: #b3aba5;
+      text-decoration: none;
+      border-radius: 6px;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .header-nav a:hover, .header-nav a.active { color: #f45d0a; background: rgba(244,93,10,0.06); }
+
+    /* ============ CARDS ============ */
+    .card {
+      background: #0f0e0d;
+      border: 1px solid #2a2826;
+      border-radius: 12px;
+      transition: all 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .card:hover { border-color: rgba(244,93,10,0.3); }
+    .card-section-header {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #f6ddcb;
+      border-bottom: 1px solid #2a2826;
+      background: #1a1918;
+    }
+    .card-section-header svg { color: #f45d0a; }
+
+    /* ============ HERO SECTION ============ */
+    .hero-section { position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .hero-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; }
+    .hero-content { position: relative; z-index: 1; text-align: center; padding: 0 24px; max-width: 700px; }
+    .hero-tag {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 30px;
+      background: rgba(244,93,10,0.1); border: 1px solid rgba(244,93,10,0.2);
+      color: #f45d0a; font-size: 12px; margin-bottom: 28px;
+    }
+    .hero-title {
+      font-family: 'Times New Roman', Times, Georgia, serif;
+      font-style: italic;
+      font-size: clamp(48px, 10vw, 96px);
+      color: #f6ddcb;
+      line-height: 1;
+      margin-bottom: 24px;
+    }
+    .hero-desc { font-size: 16px; color: #b3aba5; line-height: 1.7; margin-bottom: 32px; }
+    .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .hero-stats {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+      margin-top: 64px; padding-top: 32px; border-top: 1px solid #2a2826;
+    }
+    .hero-stat-num {
+      font-family: 'Times New Roman', Times, Georgia, serif;
+      font-style: italic; font-size: 28px; color: #f45d0a; margin-bottom: 4px;
+    }
+    .hero-stat-label { font-size: 12px; color: #b3aba5; }
+
+    /* ============ FEATURE SECTION ============ */
+    .section { padding: 80px 24px; }
+    .section-inner { max-width: 1100px; margin: 0 auto; }
+    .section-title {
+      font-family: 'Times New Roman', Times, Georgia, serif;
+      font-style: italic; font-size: 32px; color: #f6ddcb;
+      margin-bottom: 8px; text-align: center;
+    }
+    .section-subtitle { font-size: 14px; color: #b3aba5; text-align: center; margin-bottom: 48px; }
+    .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .feature-card { padding: 28px; position: relative; }
+    .feature-step {
+      position: absolute; top: 16px; right: 16px;
+      font-family: monospace; font-size: 11px; color: #f45d0a; opacity: 0.5;
+    }
+    .feature-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: rgba(244,93,10,0.08); display: flex;
+      align-items: center; justify-content: center;
+      margin-bottom: 16px;
+    }
+    .feature-icon svg { color: #f45d0a; }
+    .feature-title { font-size: 14px; font-weight: 600; color: #f6ddcb; margin-bottom: 8px; }
+    .feature-desc { font-size: 12px; color: #b3aba5; line-height: 1.7; }
+    .feature-card .hover-border {
+      position: absolute; inset: 0; border-radius: 12px; border: 1px solid transparent;
+      transition: all 0.3s; pointer-events: none;
+    }
+    .feature-card:hover .hover-border { border-color: #f45d0a; box-shadow: inset 0 0 20px rgba(244,93,10,0.05); }
+
+    /* ============ DASHBOARD ============ */
+    .dashboard { padding: 80px 24px 40px; max-width: 1100px; margin: 0 auto; }
+    .dashboard-header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 28px; }
+    .dashboard-title { font-family: 'Times New Roman', Times, Georgia, serif; font-style: italic; font-size: 28px; color: #f6ddcb; margin-bottom: 4px; }
+    .dashboard-subtitle { font-size: 13px; color: #b3aba5; }
+    .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .project-card { padding: 20px; cursor: pointer; }
+    .project-card .delete-btn { opacity: 0; transition: opacity 0.2s; }
+    .project-card:hover .delete-btn { opacity: 1; }
+    .project-card-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; }
+    .project-icon { width: 36px; height: 36px; border-radius: 10px; background: rgba(244,93,10,0.08); display: flex; align-items: center; justify-content: center; }
+    .project-icon svg { color: #f45d0a; }
+    .project-name { font-size: 14px; font-weight: 600; color: #f6ddcb; margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .project-desc { font-size: 12px; color: #b3aba5; line-height: 1.5; margin-bottom: 16px; }
+    .project-meta { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid #1a1918; }
+    .project-date { font-size: 11px; color: #6b6560; display: flex; align-items: center; gap: 4px; }
+    .project-status {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 3px 10px; border-radius: 20px;
+    }
+    .status-draft { background: rgba(244,93,10,0.1); color: #f45d0a; }
+    .status-ready { background: rgba(45,156,123,0.1); color: #2d9c7b; }
+    .status-generated { background: rgba(139,92,246,0.1); color: #8b5cf6; }
+    .empty-state { text-align: center; padding: 60px 24px; border: 1px dashed #2a2826; border-radius: 12px; background: #0f0e0d; }
+    .empty-state svg { color: #6b6560; margin-bottom: 12px; }
+
+    /* ============ DIALOG ============ */
+    .dialog-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(5,3,2,0.7);
+      backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center;
+      animation: fadeIn 0.2s;
+    }
+    .dialog {
+      background: #0f0e0d; border: 1px solid #2a2826; border-radius: 16px;
+      padding: 24px; width: 90%; max-width: 440px;
+      animation: slideIn 0.25s;
+    }
+    .dialog-title {
+      font-family: 'Times New Roman', Times, Georgia, serif;
+      font-style: italic; font-size: 20px; color: #f6ddcb; margin-bottom: 16px;
+    }
+    .dialog-body { margin-bottom: 20px; }
+    .dialog-body label { display: block; font-size: 12px; color: #b3aba5; margin-bottom: 6px; }
+    .dialog-body .field { margin-bottom: 14px; }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+    /* ============ WORKSPACE LAYOUT ============ */
+    .workspace { display: flex; height: calc(100vh - 56px); margin-top: 56px; }
+    .ws-panel {
+      width: 280px; flex-shrink: 0; overflow-y: auto;
+      border-right: 1px solid #2a2826;
+      background: rgba(15,14,13,0.95);
+    }
+    .ws-main { flex: 1; overflow-y: auto; padding: 16px 20px; }
+    .ws-right {
+      width: 300px; flex-shrink: 0; overflow-y: auto;
+      border-left: 1px solid #2a2826;
+      background: rgba(15,14,13,0.95);
+    }
+    .ws-section { padding: 16px; border-bottom: 1px solid #2a2826; }
+    .ws-section-title {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.8px; color: #f6ddcb; margin-bottom: 12px;
+    }
+    .ws-section-title svg { color: #f45d0a; }
+
+    /* Upload Area */
+    .upload-area {
+      border: 2px dashed #2a2826; border-radius: 12px;
+      padding: 20px; text-align: center; cursor: pointer;
+      transition: all 0.2s; background: rgba(15,14,13,0.5);
+    }
+    .upload-area:hover { border-color: #f45d0a; background: rgba(244,93,10,0.03); }
+    .upload-area svg { color: #f45d0a; margin-bottom: 8px; }
+    .upload-area .u-text { font-size: 12px; color: #b3aba5; }
+    .upload-area .u-hint { font-size: 10px; color: #6b6560; }
+
+    /* Material Item */
+    .material-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 10px; border-radius: 8px; margin-bottom: 4px;
+      background: #1a1918;
+    }
+    .material-item .mi-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .material-item .mi-left svg { color: #f45d0a; flex-shrink: 0; }
+    .material-item .mi-name { font-size: 11px; color: #f6ddcb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Diagnosis Item */
+    .diagnosis-item {
+      padding: 10px 12px; border-radius: 8px; margin-bottom: 6px;
+      background: #0f0e0d; border-left: 3px solid;
+      animation: slideIn 0.3s;
+    }
+    .diagnosis-item .di-header { display: flex; align-items: flex-start; gap: 8px; }
+    .diagnosis-item .di-msg { font-size: 11px; color: #b3aba5; line-height: 1.6; flex: 1; }
+    .diagnosis-item .di-fix { margin-top: 8px; }
+    .di-gap { border-color: #f45d0a; }
+    .di-weak { border-color: #e6a700; }
+    .di-redundant { border-color: #e6a700; }
+    .di-healthy { border-color: #2d9c7b; }
+
+    /* Narrative Block */
+    .block-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 40px; }
+    .nblock {
+      background: #0f0e0d; border: 1px solid #2a2826; border-radius: 12px;
+      overflow: hidden; transition: all 0.3s; position: relative;
+    }
+    .nblock:hover { border-color: rgba(244,93,10,0.4); }
+    .nblock.dragging { opacity: 0.6; }
+    .nblock .nb-statusbar { height: 3px; }
+    .nblock .nb-body { padding: 12px 14px; }
+    .nblock .nb-header { display: flex; align-items: center; gap: 8px; }
+    .nblock .drag-handle { cursor: grab; padding: 2px; color: #6b6560; flex-shrink: 0; }
+    .nblock .drag-handle:active { cursor: grabbing; }
+    .nblock .nb-toggle { color: #6b6560; flex-shrink: 0; cursor: pointer; padding: 2px; }
+    .nblock .nb-title {
+      flex: 1; font-size: 14px; font-weight: 600; color: #f6ddcb;
+      cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      border: none; background: transparent; font-family: inherit; outline: none;
+    }
+    .nblock .nb-title:hover { color: #f45d0a; }
+    .nblock .nb-title-edit { flex: 1; }
+    .nblock .nb-actions { display: flex; gap: 2px; }
+    .nblock .nb-actions .btn-icon { color: #6b6560; }
+    .nblock .nb-actions .btn-icon:hover { color: #f45d0a; }
+    .nblock .nb-actions .btn-deepen {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 3px 8px; border-radius: 6px; font-size: 10px;
+      background: rgba(244,93,10,0.12); color: #f45d0a;
+      border: 1px solid rgba(244,93,10,0.25);
+      cursor: pointer; transition: all 0.2s; font-weight: 500;
+    }
+    .nblock .nb-actions .btn-deepen:hover {
+      background: rgba(244,93,10,0.25); border-color: #f45d0a;
+    }
+    .nblock .nb-content { margin-top: 8px; padding-left: 24px; }
+    .nblock .nb-desc {
+      font-size: 12px; color: #b3aba5; line-height: 1.7;
+      cursor: pointer; white-space: pre-wrap; min-height: 20px;
+    }
+    .nblock .nb-desc:hover { color: #f6ddcb; }
+    .nblock .nb-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+    .nblock .nb-tag {
+      font-size: 10px; padding: 2px 8px; border-radius: 20px;
+    }
+    .nblock .nb-transition {
+      margin-top: 6px; font-size: 10px; font-style: italic; color: #6b6560;
+    }
+    .tag-warning { background: rgba(230,167,0,0.12); color: #e6a700; }
+    .tag-normal { background: rgba(244,93,10,0.1); color: #f45d0a; }
+    .tag-success { background: rgba(45,156,123,0.1); color: #2d9c7b; }
+
+    /* Add Block Button */
+    .add-block-btn {
+      border: 2px dashed #2a2826; background: #0a0908; border-radius: 12px;
+      padding: 12px; display: flex; align-items: center; justify-content: center;
+      gap: 8px; color: #f45d0a; font-size: 13px; font-weight: 500;
+      cursor: pointer; transition: all 0.2s; margin-top: 4px;
+    }
+    .add-block-btn:hover { border-color: #f45d0a; background: rgba(244,93,10,0.03); }
+
+    /* Slide Preview */
+    .slide-card {
+      padding: 12px; border-radius: 10px; background: #0f0e0d;
+      border: 1px solid #2a2826; margin-bottom: 8px;
+    }
+    .slide-card .sc-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .slide-card .sc-num { font-family: monospace; font-size: 10px; color: #6b6560; }
+    .slide-card .sc-title { font-size: 12px; font-weight: 600; color: #f6ddcb; flex: 1; }
+    .slide-card .sc-content { font-size: 11px; color: #b3aba5; line-height: 1.6; white-space: pre-line; }
+
+    /* Config Panel */
+    .config-field { margin-bottom: 14px; }
+    .config-field label { display: block; font-size: 11px; color: #b3aba5; margin-bottom: 6px; }
+    .config-field input[type="range"] { width: 100%; accent-color: #f45d0a; }
+    .config-field select { width: 100%; }
+    .config-detail-label { font-size: 11px; color: #f45d0a; margin-top: 4px; }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 30px; left: 50%;
+      background: #0f4c5c; color: white;
+      padding: 8px 18px; border-radius: 30px;
+      font-size: 13px; z-index: 999;
+      animation: toastIn 0.3s;
+      white-space: nowrap;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center; padding: 24px;
+      font-size: 11px; color: #6b6560;
+      border-top: 1px solid #2a2826;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .workspace { flex-direction: column; height: auto; }
+      .ws-panel, .ws-right { width: 100%; border: none; border-bottom: 1px solid #2a2826; }
+      .ws-main { min-height: 400px; }
+    }
+    @media (max-width: 768px) {
+      .header-nav { display: none; }
+      .hero-stats { grid-template-columns: 1fr; gap: 16px; }
+      .feature-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ===================== HEADER ===================== -->
+<header class="header">
+  <div class="header-inner">
+    <a href="#home" class="header-brand" onclick="navigate('home')">
+      Narrator <span class="badge">Beta</span>
+    </a>
+    <nav class="header-nav">
+      <a href="#home" class="nav-link active" data-page="home" onclick="navigate('home')">首页</a>
+      <a href="#dashboard" class="nav-link" data-page="dashboard" onclick="navigate('dashboard')">工作台</a>
+    </nav>
+    <div>
+      <button class="btn-primary btn-sm" onclick="startCreate()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        新建项目
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== PAGE: HOME ===================== -->
+<div id="page-home" class="page">
+  <section class="hero-section">
+    <canvas id="heroCanvas" class="hero-canvas"></canvas>
+    <div class="hero-content">
+      <div class="hero-tag">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+        叙事逻辑诊断与重组平台
+      </div>
+      <h1 class="hero-title">Narrator</h1>
+      <p class="hero-desc">
+        不是帮你做PPT，而是帮你把故事想清楚。<br>
+        上传素材，AI自动诊断逻辑断层，拖拽重组叙事结构。
+      </p>
+      <div class="hero-actions">
+        <button class="btn-primary" onclick="startCreate()">
+          开始创作
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+        </button>
+        <button class="btn-outline" onclick="navigate('dashboard')">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          上传素材诊断
+        </button>
+      </div>
+      <div class="hero-stats">
+        <div><div class="hero-stat-num">&lt; 5s</div><div class="hero-stat-label">自动诊断</div></div>
+        <div><div class="hero-stat-num">100%</div><div class="hero-stat-label">逻辑可视化</div></div>
+        <div><div class="hero-stat-num">3步</div><div class="hero-stat-label">生成演示</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-inner">
+      <h2 class="section-title">从素材到故事，只需三步</h2>
+      <p class="section-subtitle">放弃从零开始，让AI先做诊断，你只做决策</p>
+      <div class="feature-grid">
+        <div class="feature-card card">
+          <div class="hover-border"></div>
+          <div class="feature-step">01</div>
+          <div class="feature-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          </div>
+          <div class="feature-title">上传素材</div>
+          <div class="feature-desc">拖拽PDF、PPT、Excel或Word文档。AI自动提取关键信息，不需要你手动整理。</div>
+        </div>
+        <div class="feature-card card">
+          <div class="hover-border"></div>
+          <div class="feature-step">02</div>
+          <div class="feature-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
+          </div>
+          <div class="feature-title">智能诊断</div>
+          <div class="feature-desc">自动识别逻辑断层、证据薄弱和结构冗余。像一位资深顾问为你指出问题所在。</div>
+        </div>
+        <div class="feature-card card">
+          <div class="hover-border"></div>
+          <div class="feature-step">03</div>
+          <div class="feature-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+          </div>
+          <div class="feature-title">重组叙事</div>
+          <div class="feature-desc">拖拽叙事块调整顺序，AI自动重写过渡句。像编辑思维导图一样简单。</div>
+        </div>
+        <div class="feature-card card">
+          <div class="hover-border"></div>
+          <div class="feature-step">04</div>
+          <div class="feature-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h20"></path><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"></path><path d="m7 21 5-5 5 5"></path></svg>
+          </div>
+          <div class="feature-title">生成演示</div>
+          <div class="feature-desc">选择受众与风格，一键生成演示文稿。密度可调，从极简摘要到深度证据。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" style="background: #0a0908;">
+    <div class="section-inner">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center;">
+        <div>
+          <h2 class="section-title" style="text-align: left; font-size: 28px;">不需要从零开始，<br>也不需要被AI审问</h2>
+          <p style="font-size: 13px; color: #b3aba5; line-height: 1.8; margin: 20px 0;">
+            传统AI工具要么给你一张空白页让你从零写，要么用无休止的问答消耗你的耐心。
+            Narrator 不同：你先上传已有素材，AI自动诊断，你只需要确认和调整。
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f45d0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+              <span style="font-size: 13px; color: #f6ddcb;">AI是逻辑医生，不是对话教练</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f45d0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+              <span style="font-size: 13px; color: #f6ddcb;">以叙事块为单位，而非幻灯片页码</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f45d0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+              <span style="font-size: 13px; color: #f6ddcb;">每节点最多2-3轮追问，主动触发</span>
+            </div>
+          </div>
+        </div>
+        <div style="position: relative;">
+          <div style="border-radius: 16px; overflow: hidden; border: 1px solid #2a2826;">
+            <img src="https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600&h=400&fit=crop" alt="workspace" style="width: 100%; height: 320px; object-fit: cover; filter: brightness(0.6) contrast(1.1);">
+          </div>
+          <div style="position: absolute; bottom: -12px; right: -12px; padding: 10px 16px; border-radius: 10px; background: #0f0e0d; border: 1px solid #f45d0a; color: #f45d0a; font-size: 11px;">
+            专注于叙事，而非排版
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-inner" style="max-width: 600px; text-align: center;">
+      <h2 class="section-title" style="font-size: 32px;">讲好你的商业故事</h2>
+      <p style="font-size: 14px; color: #b3aba5; margin: 16px 0 32px;">
+        无论你是向投资人路演、向客户提案，还是向管理层汇报，Narrator 帮你把复杂业务逻辑讲清楚。
+      </p>
+      <button class="btn-primary" onclick="startCreate()">
+        免费开始
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+      </button>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <p> Narrator. 叙事诊断增强版.</p>
+  </footer>
+</div>
+
+<!-- ===================== PAGE: DASHBOARD ===================== -->
+<div id="page-dashboard" class="page hidden">
+  <div class="dashboard">
+    <div class="dashboard-header">
+      <div>
+        <h1 class="dashboard-title">我的工作台</h1>
+        <p class="dashboard-subtitle">管理你的叙事项目</p>
+      </div>
+      <button class="btn-primary btn-sm" onclick="showCreateDialog()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        新建项目
+      </button>
+    </div>
+    <div id="projectList"></div>
+  </div>
+</div>
+
+<!-- ===================== PAGE: WORKSPACE ===================== -->
+<div id="page-workspace" class="page hidden">
+  <div class="workspace">
+    <!-- Left Panel -->
+    <aside class="ws-panel" id="wsPanel">
+      <div class="ws-section" style="border-bottom: 1px solid #2a2826; padding: 12px 16px;">
+        <h3 id="wsProjectTitle" style="font-size: 14px; font-weight: 600; color: #f6ddcb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">未命名项目</h3>
+        <button class="btn-outline btn-xs" style="margin-top: 8px; width: 100%; justify-content: center;" onclick="navigate('dashboard')">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          返回工作台
+        </button>
+      </div>
+
+      <div class="ws-section">
+        <div class="ws-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          素材与文件
+        </div>
+        <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()" ondragover="event.preventDefault()" ondrop="handleFileDrop(event)">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          <div class="u-text">拖拽或点击上传</div>
+          <div class="u-hint">PDF / PPTX / Word / Excel</div>
+          <input type="file" id="fileInput" style="display:none" multiple accept=".pdf,.pptx,.docx,.xlsx,.txt,.jpg,.jpeg,.png" onchange="handleFileSelect(event)">
+        </div>
+        <div id="materialList" style="margin-top: 10px;"></div>
+      </div>
+
+      <div class="ws-section">
+        <div class="ws-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          逻辑诊断
+          <button class="btn-primary btn-xs" style="margin-left: auto;" onclick="runDiagnosis()" id="runDiagnosisBtn">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            运行
+          </button>
+        </div>
+        <div id="diagnosisList"></div>
+      </div>
+    </aside>
+
+    <!-- Main Canvas -->
+    <main class="ws-main">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <h3 style="font-size: 14px; font-weight: 600; color: #f6ddcb;">叙事画布</h3>
+          <span id="blockCountBadge" style="font-size: 10px; padding: 2px 8px; border-radius: 20px; background: #1a1918; color: #6b6560;">0 个节点</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn-outline btn-xs" onclick="parseFromMaterials()" id="parseBtn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-3"></path><polyline points="10,17 15,12 10,7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
+            从素材拆解
+          </button>
+          <button class="btn-primary btn-xs" onclick="addBlock()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            添加节点
+          </button>
+        </div>
+      </div>
+      <div class="block-list" id="blockList"></div>
+      <div class="add-block-btn" onclick="addBlock()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        手动添加叙事块
+      </div>
+    </main>
+
+    <!-- Right Panel -->
+    <aside class="ws-right">
+      <div class="ws-section">
+        <div class="ws-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          演示配置
+        </div>
+        <div class="config-field">
+          <label>详尽度</label>
+          <input type="range" id="detailRange" min="1" max="3" value="2" oninput="document.getElementById('detailLabel').textContent=['快速 (仅标题)','标准 (标题+摘要)','深度 (完整证据)'][this.value-1]">
+          <div class="config-detail-label" id="detailLabel">标准 (标题+摘要)</div>
+        </div>
+        <div class="config-field">
+          <label>面向群体</label>
+          <select class="input-dark" id="audienceSelect">
+            <option value="investor">投资人</option>
+            <option value="executive">管理层</option>
+            <option value="customer">客户</option>
+          </select>
+        </div>
+        <div class="config-field">
+          <label>风格</label>
+          <select class="input-dark" id="styleSelect">
+            <option value="business">商务专业</option>
+            <option value="tech">科技感</option>
+            <option value="simple">极简</option>
+          </select>
+        </div>
+        <button class="btn-primary" style="width: 100%; justify-content: center;" onclick="generatePreview()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          刷新预览
+        </button>
+      </div>
+
+      <div class="ws-section">
+        <div class="ws-section-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          幻灯片预览
+        </div>
+        <div id="slidesPreview">
+          <div style="text-align: center; padding: 32px; border: 1px dashed #2a2826; border-radius: 10px;">
+            <p style="font-size: 12px; color: #6b6560;">点击"刷新预览"生成</p>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ===================== CREATE DIALOG ===================== -->
+<div id="createDialog" class="dialog-overlay hidden" onclick="if(event.target===this)hideCreateDialog()">
+  <div class="dialog">
+    <h3 class="dialog-title">新建叙事项目</h3>
+    <div class="dialog-body">
+      <div class="field">
+        <label>项目名称</label>
+        <input type="text" class="input-dark" id="newProjectTitle" placeholder="例如：Q3 储能产品路演">
+      </div>
+      <div class="field">
+        <label>描述（可选）</label>
+        <textarea class="input-dark" id="newProjectDesc" rows="3" placeholder="简要描述这个项目的背景和目标受众"></textarea>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn-outline btn-sm" onclick="hideCreateDialog()">取消</button>
+      <button class="btn-primary btn-sm" onclick="createProject()">创建</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== DEEPEN DIALOG ===================== -->
+<div id="deepenDialog" class="dialog-overlay hidden" onclick="if(event.target===this)hideDeepenDialog()">
+  <div class="dialog">
+    <h3 class="dialog-title" style="display: flex; align-items: center; gap: 8px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f45d0a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      深化追问
+    </h3>
+    <div class="dialog-body">
+      <p style="font-size: 13px; color: #b3aba5; line-height: 1.7; margin-bottom: 14px;" id="deepenQuestion"></p>
+      <textarea class="input-dark" id="deepenAnswer" rows="3" placeholder="你的回答..."></textarea>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn-outline btn-sm" onclick="hideDeepenDialog()">跳过</button>
+      <button class="btn-primary btn-sm" onclick="submitDeepen()">提交</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div id="toastContainer"></div>
+
+<script>
+// ============================================================
+// SVG Icons helper
+// ============================================================
+const Icons = {
+  grip: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>',
+  chevronDown: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>',
+  chevronRight: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>',
+  search: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>',
+  trash: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
+  copy: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
+  fileText: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>',
+  table: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4m2 4v-4m0 0h18m-18 0v-4"></path></svg>',
+  image: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>',
+  clock: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>',
+  alert: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>',
+  alertTri: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+  check: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>',
+  x: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>',
+  folder: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>',
+  sparkles: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></svg>',
+  download: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>',
+  wand: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"></path><path d="M15 16v-2"></path><path d="M8 9h2"></path><path d="M20 9h2"></path><path d="m17.8 11.8 1.4-1.4"></path><path d="M17.8 6.2 19.2 4.8"></path><path d="m6 21 12-12"></path><path d="m7 11 5 5"></path></svg>',
+};
+
+// ============================================================
+// DATA STORE (localStorage)
+// ============================================================
+const STORE_KEY = 'narrator_projects';
+const CURRENT_KEY = 'narrator_current_project';
+
+function loadProjects() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; }
+}
+function saveProjects(projects) { localStorage.setItem(STORE_KEY, JSON.stringify(projects)); }
+function genId() { return 'p_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6); }
+function genBlockId() { return 'b_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6); }
+
+function getCurrentProject() {
+  const id = localStorage.getItem(CURRENT_KEY);
+  if (!id) return null;
+  return loadProjects().find(p => p.id === id) || null;
+}
+function setCurrentProject(id) { localStorage.setItem(CURRENT_KEY, id || ''); }
+
+function saveProject(project) {
+  const projects = loadProjects();
+  const idx = projects.findIndex(p => p.id === project.id);
+  if (idx >= 0) projects[idx] = project;
+  else projects.unshift(project);
+  saveProjects(projects);
+}
+function deleteProject(id) {
+  saveProjects(loadProjects().filter(p => p.id !== id));
+  if (localStorage.getItem(CURRENT_KEY) === id) localStorage.removeItem(CURRENT_KEY);
+}
+
+// ============================================================
+// ROUTING
+// ============================================================
+let currentPage = 'home';
+
+function navigate(page) {
+  currentPage = page;
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+
+  if (page === 'workspace') {
+    const proj = getCurrentProject();
+    if (!proj) { navigate('dashboard'); return; }
+    document.getElementById('page-workspace').classList.remove('hidden');
+    renderWorkspace();
+  } else if (page === 'dashboard') {
+    document.getElementById('page-dashboard').classList.remove('hidden');
+    renderDashboard();
+  } else {
+    document.getElementById('page-home').classList.remove('hidden');
+    document.querySelector('.nav-link[data-page="home"]')?.classList.add('active');
+    initShader();
+  }
+  window.scrollTo(0, 0);
+}
+
+// ============================================================
+// HOME - WebGL Shader
+// ============================================================
+let shaderInit = false;
+function initShader() {
+  if (shaderInit) return;
+  const canvas = document.getElementById('heroCanvas');
+  if (!canvas) return;
+  const gl = canvas.getContext('webgl');
+  if (!gl) return;
+
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w; canvas.height = h;
+  gl.viewport(0, 0, w, h);
+
+  const vertSrc = `attribute vec2 a_pos;void main(){gl_Position=vec4(a_pos,0.0,1.0);}`;
+  const fragSrc = `precision highp float;
+uniform float u_time;uniform vec2 u_res;uniform float u_intensity;uniform float u_colorShift;
+#define PI 3.14159265
+float hash(vec2 p){vec3 p3=fract(vec3(p.xyx)*0.1031);p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}
+float vnoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);float a=hash(i),b=hash(i+vec2(1.,0.)),c=hash(i+vec2(0.,1.)),d=hash(i+vec2(1.,1.));return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);}
+float fbm(vec2 p){float v=0.,a=.5;mat2 rot=mat2(cos(.5),sin(.5),-sin(.5),cos(.5));for(int i=0;i<4;i++){v+=a*vnoise(p);p=rot*p*2.+vec2(100.);a*=.5;}return v;}
+void main(){vec2 uv=gl_FragCoord.xy/u_res;float aspect=u_res.x/u_res.y;float t=u_time*.08;
+float n1=fbm(uv*vec2(3.*aspect,3.)+vec2(t,t*.3));float n2=fbm(uv*vec2(2.*aspect,2.)+vec2(-t*.7,t*.5)+50.);
+float grain=mix(n1,n2,.5)*u_intensity;vec2 c=vec2(.5);float dist=length((uv-c)*vec2(1.,.6));
+float rg=smoothstep(.9,.2,dist)+n1*.3*u_intensity;rg=pow(rg,1.6);
+vec3 cw=vec3(.15,.08,.03),cm=vec3(.08,.04,.02),cd=vec3(.02,.01,.005);
+vec3 col=mix(cd,cm,uv.x*.5+n1*.3);col=mix(col,cw,rg*.8);col+=u_colorShift*vec3(.08,.03,.01)*n2*rg;
+float gv=smoothstep(.35,.65,grain);col+=vec3(gv)*.15;
+col+=(hash(gl_FragCoord.xy+fract(u_time*.1)*1000.)-.5)*.03;
+gl_FragColor=vec4(col,1.);}`;
+
+  function cs(src, type) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, cs(vertSrc, gl.VERTEX_SHADER));
+  gl.attachShader(prog, cs(fragSrc, gl.FRAGMENT_SHADER));
+  gl.linkProgram(prog); gl.useProgram(prog);
+
+  const uTime = gl.getUniformLocation(prog, 'u_time');
+  const uRes = gl.getUniformLocation(prog, 'u_res');
+  const uIntensity = gl.getUniformLocation(prog, 'u_intensity');
+  const uColorShift = gl.getUniformLocation(prog, 'u_colorShift');
+  const aPos = gl.getAttribLocation(prog, 'a_pos');
+
+  const verts = new Float32Array([-1,-1,3,-1,-1,3,-1,3,3,-1,3,3]);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, verts, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  let raf;
+  function render(time) {
+    gl.uniform1f(uTime, time * .001);
+    gl.uniform2f(uRes, canvas.width, canvas.height);
+    gl.uniform1f(uIntensity, .7);
+    gl.uniform1f(uColorShift, .4);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    raf = requestAnimationFrame(render);
+  }
+  raf = requestAnimationFrame(render);
+  shaderInit = true;
+
+  window.addEventListener('resize', () => {
+    canvas.width = canvas.clientWidth; canvas.height = canvas.clientHeight;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+  });
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+function showToast(msg) {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = msg;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 2200);
+}
+
+// ============================================================
+// DASHBOARD
+// ============================================================
+function renderDashboard() {
+  const list = document.getElementById('projectList');
+  const projects = loadProjects();
+
+  if (!projects.length) {
+    list.innerHTML = `
+      <div class="empty-state">
+        ${Icons.folder}
+        <p style="font-size: 14px; color: #b3aba5; margin: 12px 0 4px;">还没有项目</p>
+        <p style="font-size: 12px; color: #6b6560; margin-bottom: 16px;">点击上方"新建项目"开始你的第一个叙事</p>
+        <button class="btn-outline btn-sm" onclick="showCreateDialog()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          创建项目
+        </button>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = '<div class="project-grid">' + projects.map(p => `
+    <div class="card project-card" onclick="openProject('${p.id}')">
+      <div class="project-card-top">
+        <div class="project-icon">${Icons.fileText}</div>
+        <button class="btn-icon delete-btn" onclick="event.stopPropagation();delProj('${p.id}')" title="删除">${Icons.trash}</button>
+      </div>
+      <div class="project-name">${esc(p.title)}</div>
+      <div class="project-desc line-clamp-2">${esc(p.description || '')}</div>
+      <div class="project-meta">
+        <div class="project-date">${Icons.clock} ${new Date(p.updatedAt).toLocaleDateString('zh-CN')}</div>
+        <div class="project-status status-${p.status || 'draft'}">${p.status === 'ready' ? '就绪' : p.status === 'generated' ? '已生成' : '草稿'}</div>
+      </div>
+    </div>
+  `).join('') + '</div>';
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function showCreateDialog() { document.getElementById('createDialog').classList.remove('hidden'); }
+function hideCreateDialog() { document.getElementById('createDialog').classList.add('hidden'); document.getElementById('newProjectTitle').value = ''; document.getElementById('newProjectDesc').value = ''; }
+
+function createProject() {
+  const title = document.getElementById('newProjectTitle').value.trim();
+  if (!title) { showToast('请输入项目名称'); return; }
+  const project = {
+    id: genId(),
+    title,
+    description: document.getElementById('newProjectDesc').value.trim(),
+    status: 'draft',
+    blocks: [],
+    materials: [],
+    diagnoses: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  saveProject(project);
+  setCurrentProject(project.id);
+  hideCreateDialog();
+  navigate('workspace');
+  showToast('项目已创建');
+}
+
+function startCreate() {
+  const proj = getCurrentProject();
+  if (proj) { navigate('workspace'); }
+  else { showCreateDialog(); }
+}
+
+function openProject(id) {
+  setCurrentProject(id);
+  navigate('workspace');
+}
+
+function delProj(id) {
+  if (confirm('确定删除此项目？')) {
+    deleteProject(id);
+    renderDashboard();
+    showToast('项目已删除');
+  }
+}
+
+// ============================================================
+// WORKSPACE
+// ============================================================
+function renderWorkspace() {
+  const proj = getCurrentProject();
+  if (!proj) return;
+  document.getElementById('wsProjectTitle').textContent = proj.title;
+  renderMaterials();
+  renderDiagnoses();
+  renderBlocks();
+  document.getElementById('blockCountBadge').textContent = (proj.blocks?.length || 0) + ' 个节点';
+}
+
+// Materials
+function renderMaterials() {
+  const proj = getCurrentProject();
+  const list = document.getElementById('materialList');
+  if (!proj?.materials?.length) { list.innerHTML = '<p style="text-align:center; font-size:12px; color:#6b6560; padding:8px;">暂无素材</p>'; return; }
+  list.innerHTML = proj.materials.map(m => `
+    <div class="material-item">
+      <div class="mi-left">
+        ${m.fileType === 'xlsx' ? Icons.table : m.fileType === 'image' ? Icons.image : Icons.fileText}
+        <span class="mi-name">${esc(m.filename)}</span>
+      </div>
+      <button class="btn-icon" onclick="delMaterial('${m.id}')">${Icons.x}</button>
+    </div>
+  `).join('');
+}
+
+function handleFileDrop(e) { e.preventDefault(); handleFiles(e.dataTransfer.files); }
+function handleFileSelect(e) { handleFiles(e.target.files); e.target.value = ''; }
+
+function handleFiles(files) {
+  const proj = getCurrentProject();
+  if (!proj) return;
+  const typeMap = { pdf: 'pdf', pptx: 'pptx', docx: 'docx', xlsx: 'xlsx', txt: 'txt', jpg: 'image', jpeg: 'image', png: 'image', gif: 'image' };
+  Array.from(files).forEach(f => {
+    const ext = f.name.split('.').pop()?.toLowerCase();
+    proj.materials = proj.materials || [];
+    if (!proj.materials.find(m => m.filename === f.name)) {
+      proj.materials.push({ id: genId(), filename: f.name, fileType: typeMap[ext] || 'txt', size: f.size });
+    }
+  });
+  saveProject(proj);
+  renderMaterials();
+  showToast(`已添加 ${files.length} 个文件`);
+}
+
+function delMaterial(id) {
+  const proj = getCurrentProject();
+  if (!proj) return;
+  proj.materials = (proj.materials || []).filter(m => m.id !== id);
+  saveProject(proj);
+  renderMaterials();
+}
+
+// Diagnosis
+function renderDiagnoses() {
+  const proj = getCurrentProject();
+  const list = document.getElementById('diagnosisList');
+  if (!proj?.diagnoses?.length) {
+    list.innerHTML = `<div style="text-align:center; padding:12px;">
+      <p style="font-size:12px; color:#b3aba5; margin-bottom:6px;">添加叙事块后，点击上方「运行」</p>
+      <p style="font-size:11px; color:#6b6560;">自动检测逻辑断层、证据薄弱等问题</p>
+    </div>`;
+    return;
+  }
+  list.innerHTML = proj.diagnoses.map((d, i) => `
+    <div class="diagnosis-item di-${d.type}" style="animation-delay:${i*0.05}s">
+      <div class="di-header">
+        ${d.type === 'healthy' ? Icons.check : d.severity === 'critical' ? Icons.alertTri : Icons.alert}
+        <span class="di-msg">${esc(d.message)}</span>
+      </div>
+      ${d.type !== 'healthy' ? `<div class="di-fix"><button class="btn-outline btn-xs" onclick="fixDiagnosis(${i})">一键优化</button></div>` : ''}
+    </div>
+  `).join('');
+}
+
+function runDiagnosis() {
+  const proj = getCurrentProject();
+  if (!proj) return;
+  const blocks = proj.blocks || [];
+  const issues = [];
+
+  // Rule 1: missing data node
+  const hasData = blocks.some(b => /数据|案例|验证|指标|proof|evidence|data/i.test(b.title));
+  if (!hasData && blocks.length > 0) {
+    issues.push({ type: 'gap', severity: 'warning', message: '缺少数据验证节点。建议增加量化证据，如试点客户成本降低百分比或第三方测试报告。' });
+  }
+  // Rule 2: short descriptions
+  blocks.forEach(b => {
+    if ((b.description || '').length < 30) {
+      let sug = '建议补充1-2句关键证据或数据点，增强说服力。';
+      if (b.title.includes('痛点')) sug = '建议补充具体市场数据或客户痛点场景。';
+      else if (b.title.includes('方案') || b.title.includes('技术')) sug = '建议补充核心技术参数、专利情况或与竞品的对比数据。';
+      else if (b.title.includes('案例')) sug = '建议补充客户名称、具体实施周期、可量化的收益。';
+      issues.push({ type: 'weak_evidence', severity: 'warning', message: `节点「${b.title}」描述过于简短。${sug}`, blockId: b.id });
+    }
+  });
+  // Rule 3: duplicate titles
+  const titles = {};
+  blocks.forEach(b => { titles[b.title] = (titles[b.title] || 0) + 1; });
+  Object.entries(titles).forEach(([t, c]) => { if (c > 1) issues.push({ type: 'redundancy', severity: 'info', message: `标题重复：「${t}」出现了${c}次。建议合并或重命名以保持逻辑清晰。` }); });
+  // Rule 4: gap between cost and case
+  const costIdx = blocks.findIndex(b => /成本|cost|price|费用/i.test(b.title));
+  const caseIdx = blocks.findIndex(b => /案例|case|客户|customer/i.test(b.title));
+  if (costIdx !== -1 && caseIdx !== -1 && caseIdx > costIdx + 1) {
+    issues.push({ type: 'gap', severity: 'critical', message: `逻辑断层：「${blocks[costIdx].title}」与「${blocks[caseIdx].title}」之间缺少过渡。建议插入衔接内容。`, blockId: blocks[costIdx].id });
+  }
+
+  if (!issues.length) issues.push({ type: 'healthy', severity: 'info', message: '逻辑结构健康，叙事链完整' });
+
+  proj.diagnoses = issues;
+  saveProject(proj);
+  renderDiagnoses();
+  showToast(`诊断完成：发现 ${issues.filter(i => i.type !== 'healthy').length} 个问题`);
+}
+
+function fixDiagnosis(idx) {
+  const proj = getCurrentProject();
+  if (!proj || !proj.diagnoses[idx]) return;
+  const diag = proj.diagnoses[idx];
+  if (diag.blockId) {
+    const block = proj.blocks.find(b => b.id === diag.blockId);
+    if (block) {
+      if (diag.type === 'weak_evidence') {
+        if (block.title.includes('痛点')) block.description += ' 据行业白皮书，目标市场成本中位数仍高于行业平均30%，中小企业能源成本占比超25%。';
+        else if (block.title.includes('方案')) block.description += ' 采用领先架构，循环效率提升12%，已获国际安全认证。';
+        else if (block.title.includes('案例')) block.description += ' 某制造企业部署后，年收益增加72万元，投资回报率达22%。';
+        else block.description += ' (已自动补充示例数据，请根据实际情况修改)';
+      } else if (diag.type === 'gap') {
+        block.description += ' [已插入过渡] 基于上述分析，我们可以自然引出下一阶段内容。';
+      }
+      block.tags = block.tags || [];
+      block.tags.push({ text: '已优化', type: '' });
+      block.status = 'modified';
+    }
+  }
+  proj.diagnoses.splice(idx, 1);
+  if (!proj.diagnoses.length) proj.diagnoses = [{ type: 'healthy', severity: 'info', message: '逻辑结构健康，叙事链完整' }];
+  saveProject(proj);
+  renderDiagnoses();
+  renderBlocks();
+  showToast('已应用优化');
+}
+
+// Blocks
+function renderBlocks() {
+  const proj = getCurrentProject();
+  const list = document.getElementById('blockList');
+  const blocks = proj?.blocks || [];
+
+  if (!blocks.length) {
+    list.innerHTML = `
+      <div style="text-align:center; padding:48px; border:2px dashed #2a2826; border-radius:12px; background:#0a0908;">
+        ${Icons.sparkles}
+        <p style="font-size:13px; color:#b3aba5; margin:12px 0 4px;">暂无叙事块</p>
+        <p style="font-size:12px; color:#6b6560; margin-bottom:16px;">点击"从素材拆解"或"添加节点"开始</p>
+        <div style="display:flex; gap:16px; justify-content:center; font-size:11px; color:#6b6560;">
+          <span style="display:flex; align-items:center; gap:4px;"><span style="background:rgba(244,93,10,0.12); color:#f45d0a; padding:2px 8px; border-radius:6px; font-size:10px; border:1px solid rgba(244,93,10,0.25);">${Icons.search} 深化</span> 追问补充内容</span>
+          <span style="display:flex; align-items:center; gap:4px;"><span style="background:rgba(244,93,10,0.12); color:#f45d0a; padding:2px 8px; border-radius:6px; font-size:10px; border:1px solid rgba(244,93,10,0.25);">运行</span> 诊断逻辑问题</span>
+        </div>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = blocks.map((b, idx) => {
+    const isCollapsed = b._collapsed;
+    const statusColor = b.status === 'deepened' ? 'linear-gradient(90deg,#f45d0a,#a52315)' : b.status === 'modified' ? '#2d9c7b' : b.status === 'ai_generated' ? '#8b5cf6' : '#2a2826';
+    const tags = (b.tags || []).map(t => `<span class="nb-tag tag-${t.type || 'normal'}">${esc(t.text)}</span>`).join('');
+    return `
+    <div class="nblock" data-block-id="${b.id}" draggable="true" ondragstart="blockDragStart(event)" ondragover="blockDragOver(event)" ondrop="blockDrop(event)" ondragend="blockDragEnd(event)">
+      <div class="nb-statusbar" style="background:${statusColor};"></div>
+      <div class="nb-body">
+        <div class="nb-header">
+          <span class="drag-handle">${Icons.grip}</span>
+          <span class="nb-toggle" onclick="toggleBlock('${b.id}')">${isCollapsed ? Icons.chevronRight : Icons.chevronDown}</span>
+          <input type="text" class="input-dark nb-title-edit" value="${esc(b.title)}" onchange="updateBlockTitle('${b.id}',this.value)" onkeydown="if(event.key==='Enter')this.blur()" style="font-size:14px; padding:4px 8px;">
+          <div class="nb-actions">
+            <button class="btn-deepen" onclick="deepenBlock('${b.id}')">${Icons.search} 深化</button>
+            <button class="btn-icon" onclick="dupBlock('${b.id}')" title="复制">${Icons.copy}</button>
+            <button class="btn-icon" onclick="delBlock('${b.id}')" title="删除">${Icons.trash}</button>
+          </div>
+        </div>
+        ${!isCollapsed ? `
+        <div class="nb-content">
+          <textarea class="input-dark nb-desc" style="font-size:12px; min-height:50px;" onchange="updateBlockDesc('${b.id}',this.value)">${esc(b.description || '')}</textarea>
+          ${tags ? `<div class="nb-tags">${tags}</div>` : ''}
+          ${b.transition ? `<div class="nb-transition">${esc(b.transition)}</div>` : ''}
+        </div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+let dragSrcId = null;
+function blockDragStart(e) { dragSrcId = e.currentTarget.dataset.blockId; e.currentTarget.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; }
+function blockDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+function blockDragEnd(e) { e.currentTarget.classList.remove('dragging'); document.querySelectorAll('.nblock').forEach(b => b.style.borderColor = ''); }
+function blockDrop(e) {
+  e.preventDefault();
+  const targetId = e.currentTarget.dataset.blockId;
+  if (!dragSrcId || dragSrcId === targetId) return;
+  const proj = getCurrentProject();
+  if (!proj) return;
+  const srcIdx = proj.blocks.findIndex(b => b.id === dragSrcId);
+  const tgtIdx = proj.blocks.findIndex(b => b.id === targetId);
+  if (srcIdx === -1 || tgtIdx === -1) return;
+  const [block] = proj.blocks.splice(srcIdx, 1);
+  proj.blocks.splice(tgtIdx, 0, block);
+  // Update transitions
+  proj.blocks.forEach((b, i) => {
+    b.transition = i > 0 ? `从「${proj.blocks[i-1].title}」到「${b.title}」` : '';
+  });
+  saveProject(proj);
+  renderBlocks();
+  showToast('顺序已更新');
+}
+
+function toggleBlock(id) {
+  const proj = getCurrentProject();
+  const b = proj.blocks.find(x => x.id === id);
+  if (b) { b._collapsed = !b._collapsed; saveProject(proj); renderBlocks(); }
+}
+
+function addBlock() {
+  const proj = getCurrentProject();
+  if (!proj) return;
+  proj.blocks = proj.blocks || [];
+  proj.blocks.push({
+    id: genBlockId(),
+    title: '新业务节点',
+    description: '请输入关键逻辑或证据...',
+    tags: [],
+    status: 'original',
+    _collapsed: false,
+  });
+  saveProject(proj);
+  renderBlocks();
+  document.getElementById('blockCountBadge').textContent = proj.blocks.length + ' 个节点';
+  showToast('新节点已添加');
+}
+
+function delBlock(id) {
+  if (!confirm('删除此节点？')) return;
+  const proj = getCurrentProject();
+  proj.blocks = proj.blocks.filter(b => b.id !== id);
+  saveProject(proj);
+  renderBlocks();
+  document.getElementById('blockCountBadge').textContent = proj.blocks.length + ' 个节点';
+}
+
+function dupBlock(id) {
+  const proj = getCurrentProject();
+  const orig = proj.blocks.find(b => b.id === id);
+  if (!orig) return;
+  proj.blocks.push({ ...orig, id: genBlockId(), title: orig.title + ' (副本)', status: 'modified' });
+  saveProject(proj);
+  renderBlocks();
+  showToast('已复制节点');
+}
+
+function updateBlockTitle(id, val) {
+  const proj = getCurrentProject();
+  const b = proj.blocks.find(x => x.id === id);
+  if (b) { b.title = val; b.status = b.status === 'original' ? 'modified' : b.status; saveProject(proj); }
+}
+
+function updateBlockDesc(id, val) {
+  const proj = getCurrentProject();
+  const b = proj.blocks.find(x => x.id === id);
+  if (b) { b.description = val; b.status = b.status === 'original' ? 'modified' : b.status; saveProject(proj); }
+}
+
+function parseFromMaterials() {
+  const proj = getCurrentProject();
+  if (!proj?.materials?.length) { showToast('请先上传至少一个文件'); return; }
+  const names = proj.materials.map(m => m.filename.toLowerCase()).join(' ');
+  const newBlocks = [];
+  if (names.includes('储能') || names.includes('ppt') || names.includes('doc')) {
+    newBlocks.push({ title: '市场机会与痛点', desc: '工商业储能需求年增45%，但现有方案成本高、寿命短。', tags: [] });
+    newBlocks.push({ title: '核心技术突破', desc: '液冷热管理将寿命提升至12000次，度电成本降低18%。', tags: [{ text: '需补充数据', type: 'warning' }] });
+    newBlocks.push({ title: '落地案例验证', desc: '江苏工厂6个月节省电费72万。', tags: [{ text: '证据充足', type: '' }] });
+  } else {
+    newBlocks.push({ title: '背景与挑战', desc: '请根据上传文档补充具体内容', tags: [] });
+    newBlocks.push({ title: '解决方案', desc: '核心产品/服务简介', tags: [] });
+    newBlocks.push({ title: '竞争优势', desc: '与竞品对比的关键差异', tags: [{ text: '建议深化', type: 'warning' }] });
+  }
+  if (names.includes('xlsx') || names.includes('excel')) {
+    newBlocks.splice(2, 0, { title: '数据支撑', desc: '从Excel提取的量化指标', tags: [{ text: '来自Excel', type: '' }] });
+  }
+  newBlocks.forEach(b => {
+    proj.blocks.push({ id: genBlockId(), title: b.title, description: b.desc, tags: b.tags, status: 'ai_generated', _collapsed: false });
+  });
+  saveProject(proj);
+  renderBlocks();
+  document.getElementById('blockCountBadge').textContent = proj.blocks.length + ' 个节点';
+  showToast(`已从 ${proj.materials.length} 个素材拆解出 ${newBlocks.length} 个节点`);
+}
+
+// Deepen
+let deepenBlockId = null;
+function deepenBlock(id) {
+  deepenBlockId = id;
+  const questions = [
+    "这个数据点有对比基准吗？比如行业平均水平。",
+    "能提供一个具体客户的名字或场景吗？",
+    "如果竞争对手反驳这一点，你会如何回应？",
+    "这个论点的核心受众是谁？他们会关心什么？",
+    "有没有量化的 ROI 或成本节省数据可以补充？",
+  ];
+  document.getElementById('deepenQuestion').textContent = questions[Math.floor(Math.random() * questions.length)];
+  document.getElementById('deepenAnswer').value = '';
+  document.getElementById('deepenDialog').classList.remove('hidden');
+}
+function hideDeepenDialog() { document.getElementById('deepenDialog').classList.add('hidden'); deepenBlockId = null; }
+function submitDeepen() {
+  if (!deepenBlockId) return;
+  const answer = document.getElementById('deepenAnswer').value.trim();
+  if (!answer) { hideDeepenDialog(); return; }
+  const proj = getCurrentProject();
+  const b = proj.blocks.find(x => x.id === deepenBlockId);
+  if (b) {
+    b.description = (b.description || '') + '\n[深化补充] ' + answer;
+    b.tags = b.tags || [];
+    b.tags.push({ text: '已深化', type: '' });
+    b.status = 'deepened';
+    saveProject(proj);
+    renderBlocks();
+    showToast('追问完成，内容已补充');
+  }
+  hideDeepenDialog();
+}
+
+// Preview
+function generatePreview() {
+  const proj = getCurrentProject();
+  if (!proj?.blocks?.length) { showToast('请先添加节点'); return; }
+  const detail = parseInt(document.getElementById('detailRange').value);
+  const audience = document.getElementById('audienceSelect').value;
+  const audienceLabel = audience === 'investor' ? '投资人' : audience === 'executive' ? '管理层' : '客户';
+  const labels = ['快速 (仅标题)', '标准 (标题+摘要)', '深度 (完整证据)'];
+
+  let html = '';
+  // Cover
+  html += `<div class="slide-card"><div class="sc-header"><span class="sc-num">01</span><span class="sc-title">${esc(proj.title)}</span></div><div class="sc-content">面向${audienceLabel} | ${labels[detail-1]}</div></div>`;
+
+  proj.blocks.forEach((b, i) => {
+    let content = '';
+    if (detail === 1) content = `<strong>${esc(b.title)}</strong>`;
+    else if (detail === 2) content = `<strong>${esc(b.title)}</strong>\n${esc((b.description || '').slice(0, 80))}...`;
+    else content = `<strong>${esc(b.title)}</strong>\n${esc(b.description || '')}${b.transition ? '\n[过渡] ' + esc(b.transition) : ''}`;
+    html += `<div class="slide-card"><div class="sc-header"><span class="sc-num">${String(i + 2).padStart(2, '0')}</span><span class="sc-title">${esc(b.title)}</span></div><div class="sc-content">${content.replace(/\n/g, '<br>')}</div></div>`;
+  });
+
+  html += `<div class="slide-card"><div class="sc-header"><span class="sc-num">${String(proj.blocks.length + 2).padStart(2, '0')}</span><span class="sc-title">总结与下一步</span></div><div class="sc-content">基于以上逻辑的决策建议</div></div>`;
+
+  const container = document.getElementById('slidesPreview');
+  container.innerHTML = html;
+  showToast('预览已更新');
+}
+
+// ============================================================
+// INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  // Check URL hash
+  const hash = window.location.hash.replace('#', '');
+  if (hash === 'dashboard') navigate('dashboard');
+  else if (hash === 'workspace') navigate('workspace');
+  else navigate('home');
+});
+</script>
+</body>
+</html>
